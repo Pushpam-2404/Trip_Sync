@@ -75,6 +75,38 @@ export const PlannerScreen = () => {
     }, [stayLocation, activePlannerInput, destination]);
 
 
+    // Helper to geocode destination string to coords
+    const resolveDestinationCoords = async (dest: string) => {
+        if (!dest) return null;
+        try {
+            // Use predictions to get details including geometry. 
+            // Ideally we'd use a dedicated geocode function, but searchPlaces can work if it returns geometry.
+            // Or use the predictions we might have selected. 
+            // For robust text-to-coord, we can use searchPlaces(dest) itself.
+            const results = await searchPlaces(dest);
+            if (results && results.length > 0 && results[0].geometry?.location) {
+                return results[0].geometry.location;
+            }
+        } catch (e) {
+            console.error("Failed to resolve coords for", dest);
+        }
+        return null;
+    };
+
+    // Placeholder images to avoid "same image" look
+    const STAY_IMAGES = [
+        'https://images.unsplash.com/photo-1582719508461-905c673771fd?q=80&w=2825&auto=format&fit=crop',
+        'https://images.unsplash.com/photo-1566073771259-6a8506099945?q=80&w=2940&auto=format&fit=crop',
+        'https://images.unsplash.com/photo-1551882547-ff40c63fe5fa?q=80&w=2940&auto=format&fit=crop',
+        'https://images.unsplash.com/photo-1445019980597-93fa8acb246c?q=80&w=2948&auto=format&fit=crop'
+    ];
+    const ATTRACTION_IMAGES = [
+        'https://images.unsplash.com/photo-1500835556837-99ac94a94552?q=80&w=2574&auto=format&fit=crop',
+        'https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1?q=80&w=2940&auto=format&fit=crop',
+        'https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?q=80&w=2021&auto=format&fit=crop',
+        'https://images.unsplash.com/photo-1533929736472-594e45db7054?q=80&w=2940&auto=format&fit=crop'
+    ];
+
     useEffect(() => {
         const fetchStays = async () => {
             if (step === 2 && !hasStayPlanned && destination && destination !== 'Current Location') {
@@ -83,15 +115,16 @@ export const PlannerScreen = () => {
                 setStays([]);
                 setSelectedStayId(null);
 
-                const results = await searchPlaces(`hotels and resorts in ${destination}`);
+                const destCoords = await resolveDestinationCoords(destination);
+                const results = await searchPlaces(`hotels and resorts`, destCoords || undefined);
 
                 if (results && results.length > 0) {
                     const formattedStays: Stay[] = results.map(place => ({
                         id: place.id,
                         name: place.name,
-                        distance: place.formatted_address || '', // We don't have accurate distance from simple search without location
-                        rating: place.rating || 4.0, // Mock if missing
-                        image: place.photos?.[0] || 'https://images.unsplash.com/photo-1582719508461-905c673771fd?q=80&w=2825&auto=format&fit=crop',
+                        distance: place.vicinity || place.formatted_address || '',
+                        rating: place.rating || 4.0,
+                        image: place.photos?.[0] || STAY_IMAGES[Math.floor(Math.random() * STAY_IMAGES.length)],
                     }));
                     setStays(formattedStays.slice(0, 15));
                 } else {
@@ -116,14 +149,16 @@ export const PlannerScreen = () => {
                 setAttractionsError(null);
                 setNearbyAttractions([]);
 
-                const results = await searchPlaces(`tourist attractions in ${destination}`);
+                const destCoords = await resolveDestinationCoords(destination);
+                const results = await searchPlaces(`tourist attractions`, destCoords || undefined);
+
                 if (results && results.length > 0) {
                     const formattedAttractions: Stay[] = results.map(place => ({
                         id: place.id,
                         name: place.name,
-                        distance: place.formatted_address || 'Details unavailable',
+                        distance: place.vicinity || place.formatted_address || 'Details unavailable',
                         rating: place.rating || 4.2,
-                        image: place.photos?.[0] || 'https://images.unsplash.com/photo-1500835556837-99ac94a94552?q=80&w=2574&auto=format&fit=crop',
+                        image: place.photos?.[0] || ATTRACTION_IMAGES[Math.floor(Math.random() * ATTRACTION_IMAGES.length)],
                     }));
                     setNearbyAttractions(formattedAttractions.slice(0, 15));
                 } else {
