@@ -10,8 +10,8 @@
   },
   "dependencies": {
     "@mapbox/polyline": "^1.2.1",
+    "@react-google-maps/api": "^2.20.8",
     "axios": "^1.13.2",
-    "olamaps-web-sdk": "^1.2.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1"
   },

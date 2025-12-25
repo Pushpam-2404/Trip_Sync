@@ -1,274 +1,121 @@
 /// <reference types="vite/client" />
-import { OlaMaps } from 'olamaps-web-sdk';
-import polyline from '@mapbox/polyline';
+/// <reference types="google.maps" />
 
-const API_KEY = import.meta.env.VITE_OLA_MAPS_API_KEY || 'H1W1aG5JPbviVwqgi0gvtsFuhhQHNAHBjoX0yutE'; // Fallback for safety
+// NOTE: The Google Maps script must be loaded (e.g., via useJsApiLoader in a component) 
+// before these functions are called, as they rely on the global `google` namespace.
 
-let olaMaps: any = null;
-let mapInstance: any = null;
-
-export const initializeOlaMaps = () => {
-    if (!olaMaps) {
-        olaMaps = new OlaMaps({
-            apiKey: API_KEY,
-        });
-    }
-    return olaMaps;
-};
-
-export const createMap = (containerId: string, center: [number, number], zoom: number = 12) => {
-    const maps = initializeOlaMaps();
-
-    // Create the map instance
-    mapInstance = maps.init({
-        style: "https://api.olakrutrim.com/tiles/vector/v1/styles/default-light-standard/style.json",
-        container: containerId,
-        center: center,
-        zoom: zoom,
-    });
-
-    return mapInstance;
-};
-
-// Autocomplete Service
-export const getPlacePredictions = async (input: string): Promise<any[]> => {
-    if (!input || input.length < 3) return [];
-
-    try {
-        const response = await fetch(`https://api.olamaps.io/places/v1/autocomplete?input=${encodeURIComponent(input)}&api_key=${API_KEY}`);
-        const data = await response.json();
-
-        if (data && data.predictions) {
-            return data.predictions.map((p: any) => ({
-                description: p.description,
-                place_id: p.place_id,
-                structured_formatting: {
-                    main_text: p.structured_formatting?.main_text || p.description,
-                    secondary_text: p.structured_formatting?.secondary_text || '',
-                }
-            }));
-        }
-        return [];
-    } catch (error) {
-        console.error("Error fetching predictions:", error);
-        return [];
-    }
-};
-
-// Directions Service
-export const getDirections = async (origin: string | { lat: number, lng: number }, destination: string | { lat: number, lng: number }): Promise<any> => {
-    try {
-        const originStr = typeof origin === 'string' ? origin : `${origin.lat},${origin.lng}`;
-        const destStr = typeof destination === 'string' ? destination : `${destination.lat},${destination.lng}`;
-
-        // Using Ola Maps Directions API
-        const response = await fetch(`https://api.olamaps.io/routing/v1/directions?origin=${originStr}&destination=${destStr}&api_key=${API_KEY}`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            }
-        });
-
-        const text = await response.text();
-
-        try {
-            const data = JSON.parse(text);
-            if (data.status === 'SUCCESS' || data.routes) {
-                return data;
-            }
-            if (data.geocoded_waypoints) return data;
-        } catch (e) {
-            // Not valid JSON
-        }
-
-        // Try standard polyline decoding if it looks like one
-        try {
-            const geometry = polyline.toGeoJSON(text);
-            if (geometry.coordinates.length > 0) {
-                // Create a mock route structure with one leg and one step to prevent UI crashes
-                const mockLeg = {
-                    distance: { value: 0, text: "Unknown" },
-                    duration: { value: 0, text: "Unknown" },
-                    steps: [
-                        {
-                            distance: { value: 0, text: "Unknown" },
-                            duration: { value: 0, text: "Unknown" },
-                            html_instructions: "Follow the route",
-                            instructions: "Follow the route",
-                            maneuver: "straight",
-                            start_location: { lat: geometry.coordinates[0][1], lng: geometry.coordinates[0][0] },
-                            end_location: { lat: geometry.coordinates[geometry.coordinates.length - 1][1], lng: geometry.coordinates[geometry.coordinates.length - 1][0] },
-                            polyline: { points: text }
-                        }
-                    ]
-                };
-                return { status: 'OK', routes: [{ geometry: geometry, legs: [mockLeg], overview_polyline: text }] };
-            }
-        } catch (e) {
-            console.error("Failed to decode polyline or parse JSON:", text.substring(0, 50));
-            return null;
-        }
-
-        return null; // Return null if neither worked
-    } catch (error) {
-        console.error("Error fetching directions:", error);
-        return null;
-    }
-};
-
-// Distance Matrix
-export const getDistanceMatrix = async (origins: string[], destinations: string[]): Promise<any> => {
-    try {
-        const response = await fetch(`https://api.olamaps.io/routing/v1/distanceMatrix?origins=${origins.join('|')}&destinations=${destinations.join('|')}&api_key=${API_KEY}`);
-        const data = await response.json();
-        return data;
-    } catch (error) {
-        console.error("Error fetching distance matrix:", error);
-        return {
-            rows: origins.map(() => ({
-                elements: destinations.map(() => ({
-                    status: 'OK',
-                    distance: { value: 1000, text: '1 km' },
-                    duration: { value: 600, text: '10 mins' }
-                }))
-            }))
-        };
-    }
-};
-
-// Map Utils
-export const addMarker = (map: any, lat: number, lng: number, popupContent?: string) => {
-    if (!olaMaps) return null;
-    try {
-        const marker = olaMaps.addMarker({
-            offset: [0, -10],
-            anchor: 'bottom',
-            color: 'red'
-        })
-            .setLngLat([lng, lat])
-            .addTo(map);
-
-        if (popupContent) {
-            const popup = olaMaps.addPopup({ offset: [0, -40] })
-                .setHTML(popupContent);
-            marker.setPopup(popup);
-        }
-        return marker;
-    } catch (e) {
-        console.error("Error adding marker:", e);
-        return null;
-    }
-};
-
-export const updateMarkerPosition = (marker: any, lat: number, lng: number) => {
-    if (marker && marker.setLngLat) {
-        marker.setLngLat([lng, lat]);
-    }
-};
-
-export const drawRoute = (map: any, routeData: any) => {
-    if (!map || !routeData) return;
-
-    const layerId = 'route';
-    const sourceId = 'route';
-
-    if (map.getSource(sourceId)) {
-        map.getSource(sourceId).setData({
-            type: 'Feature',
-            properties: {},
-            geometry: routeData // Expecting GeoJSON geometry
-        });
-    } else {
-        map.addSource(sourceId, {
-            type: 'geojson',
-            data: {
-                type: 'Feature',
-                properties: {},
-                geometry: routeData
-            }
-        });
-        map.addLayer({
-            id: layerId,
-            type: 'line',
-            source: sourceId,
-            layout: {
-                'line-join': 'round',
-                'line-cap': 'round'
-            },
-            paint: {
-                'line-color': '#06b6d4',
-                'line-width': 6
-            }
-        });
-    }
-};
-
-// Reverse Geocoding
-export const reverseGeocode = async (lat: number, lng: number): Promise<string> => {
-    try {
-        const response = await fetch(`https://api.olamaps.io/places/v1/reverse-geocode?latlng=${lat},${lng}&api_key=${API_KEY}`);
-        const data = await response.json();
-
-        if (data && data.results && data.results.length > 0) {
-            return data.results[0].formatted_address;
-        }
-        return "Unknown Location";
-    } catch (error) {
-        console.error("Error reverse geocoding:", error);
-        return "Unknown Location";
-    }
-};
-
-// Utility: Calculate distance between two points (Haversine formula)
 export const calculateDistance = (lat1: number, lng1: number, lat2: number, lng2: number): number => {
-    const R = 6371e3; // metres
-    const φ1 = lat1 * Math.PI / 180; // φ, λ in radians
-    const φ2 = lat2 * Math.PI / 180;
-    const Δφ = (lat2 - lat1) * Math.PI / 180;
-    const Δλ = (lng2 - lng1) * Math.PI / 180;
-
-    const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
-        Math.cos(φ1) * Math.cos(φ2) *
-        Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-
-    return R * c; // in metres
+    if (typeof google === 'undefined') {
+        console.error("Google Maps API not loaded");
+        return 0;
+    }
+    const p1 = new google.maps.LatLng(lat1, lng1);
+    const p2 = new google.maps.LatLng(lat2, lng2);
+    return google.maps.geometry.spherical.computeDistanceBetween(p1, p2);
 };
 
-// Text Search (Using Autocomplete as fallback for now)
+export const getPlacePredictions = async (query: string): Promise<any[]> => {
+    return searchPlaces(query);
+};
+
 export const searchPlaces = async (query: string, location?: { lat: number, lng: number }): Promise<any[]> => {
-    try {
-        // Fallback to autocomplete API as text-search returned 404
-        let url = `https://api.olamaps.io/places/v1/autocomplete?input=${encodeURIComponent(query)}&api_key=${API_KEY}`;
+    if (typeof google === 'undefined') return [];
+
+    return new Promise((resolve) => {
+        const service = new google.maps.places.AutocompleteService();
+        const request: google.maps.places.AutocompletionRequest = {
+            input: query,
+        };
+
         if (location) {
-            url += `&location=${location.lat},${location.lng}&radius=50000&strictbounds=true`; // 50km radius and prefer nearby
+            const center = new google.maps.LatLng(location.lat, location.lng);
+            const radius = 50000; // 50km
+            // Define a bias circle
+            request.locationBias = { radius, center };
         }
 
-        const response = await fetch(url);
-        const data = await response.json();
+        service.getPlacePredictions(request, (predictions, status) => {
+            if (status !== google.maps.places.PlacesServiceStatus.OK || !predictions) {
+                // console.error("Place search failed:", status); // Quiet failure for autocomplete
+                resolve([]);
+                return;
+            }
 
-        if (data && data.predictions) {
-            const mappedResults = data.predictions.map((p: any) => ({
+            const results = predictions.map(p => ({
                 id: p.place_id,
                 place_id: p.place_id,
-                name: p.description, // Autocomplete uses description
-                geometry: p.geometry,
-                // Randomized ratings to avoid static "fake" look
-                rating: (Math.random() * 1.5 + 3.5).toFixed(1), // Random 3.5 - 5.0
-                user_ratings_total: Math.floor(Math.random() * 500) + 10,
-                vicinity: p.structured_formatting?.secondary_text || p.description
+                name: p.description,
+                vicinity: p.structured_formatting.secondary_text,
+                main_text: p.structured_formatting.main_text,
+                secondary_text: p.structured_formatting.secondary_text,
             }));
+            resolve(results);
+        });
+    });
+};
 
-            // Filter duplicates based on place_id or name
-            const uniqueResults = mappedResults.filter((v: any, i: number, a: any[]) =>
-                a.findIndex((t: any) => (t.place_id === v.place_id || t.name === v.name)) === i
-            );
+export const getPlaceDetails = async (placeId: string): Promise<any> => {
+    if (typeof google === 'undefined') return null;
 
-            return uniqueResults;
-        }
-        return [];
-    } catch (error) {
-        console.error("Error searching places:", error);
-        return [];
-    }
+    // PlacesService requires a map or a generic HTML element (attributions need to be displayed)
+    // We create a dummy element for the service.
+    const dummyDiv = document.createElement('div');
+    const service = new google.maps.places.PlacesService(dummyDiv);
+
+    return new Promise((resolve, reject) => {
+        service.getDetails({
+            placeId: placeId,
+            fields: ['name', 'geometry', 'formatted_address']
+        }, (place, status) => {
+            if (status === google.maps.places.PlacesServiceStatus.OK && place) {
+                resolve(place);
+            } else {
+                resolve(null);
+            }
+        });
+    });
+};
+
+
+export const getDirections = async (origin: string | { lat: number, lng: number }, destination: string | { lat: number, lng: number }): Promise<google.maps.DirectionsResult | null> => {
+    if (typeof google === 'undefined') return null;
+
+    const directionsService = new google.maps.DirectionsService();
+
+    // Convert to LatLng or use string directly
+    const originLoc = typeof origin === 'string' ? origin : new google.maps.LatLng(origin.lat, origin.lng);
+    const destLoc = typeof destination === 'string' ? destination : new google.maps.LatLng(destination.lat, destination.lng);
+
+    return new Promise((resolve) => {
+        directionsService.route({
+            origin: originLoc,
+            destination: destLoc,
+            travelMode: google.maps.TravelMode.DRIVING,
+        }, (result, status) => {
+            if (status === google.maps.DirectionsStatus.OK && result) {
+                resolve(result);
+            } else {
+                console.error("Directions request failed due to " + status);
+                resolve(null);
+            }
+        });
+    });
+};
+
+export const reverseGeocode = async (lat: number, lng: number): Promise<string> => {
+    if (typeof google === 'undefined') return "Unknown Location";
+
+    const geocoder = new google.maps.Geocoder();
+    const latlng = { lat, lng };
+
+    return new Promise((resolve) => {
+        geocoder.geocode({ location: latlng }, (results, status) => {
+            if (status === "OK" && results && results[0]) {
+                resolve(results[0].formatted_address);
+            } else {
+                console.error("Geocoder failed due to: " + status);
+                resolve("Unknown Location");
+            }
+        });
+    });
 };
