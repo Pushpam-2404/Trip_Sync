@@ -88,3 +88,6 @@ npm run dev
 This project is configured for deployment on platforms like Vercel (Frontend) and Render/Heroku (Backend).
 -   **Frontend**: Connect your GitHub repo to Vercel. Ensure `VITE_GOOGLE_MAPS_API_KEY` is set in the Vercel Environment Variables.
 -   **Backend**: Deploy the `server` folder to a Node.js host.
+
+---
+*Last updated: December 2025*
